@@ -207,5 +207,19 @@ async def invite(interaction: discord.Interaction):
         ephemeral=True
     )
 
+import threading
+import http.server
+import socketserver
+import os
+
+def run_dummy_server():
+    PORT = int(os.environ.get("PORT", 10000))
+    Handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+        print(f"✅ Dummy server running on port {PORT}")
+        httpd.serve_forever()
+
+threading.Thread(target=run_dummy_server, daemon=True).start()
+
 # --- Run Bot ---
 bot.run(TOKEN)
