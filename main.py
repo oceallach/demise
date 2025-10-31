@@ -71,35 +71,6 @@ async def setup_roles(interaction: discord.Interaction):
             role = await guild.create_role(name=role_name, colour=colour)
             created.append(role_name)
 
-    # Retrieve roles
-    spellcaster = discord.utils.get(guild.roles, name=SPELLCASTER_ROLE)
-    dead = discord.utils.get(guild.roles, name=DEAD_ROLE)
-    giant = discord.utils.get(guild.roles, name="Giant")
-    giantess = discord.utils.get(guild.roles, name="Giantess")
-
-    try:
-        # Spellcaster above all size roles
-        if spellcaster:
-            highest_size_pos = max(
-                [r.position for r in guild.roles if r.name in SIZE_ORDER],
-                default=0
-            )
-            if spellcaster.position <= highest_size_pos:
-                await spellcaster.edit(position=highest_size_pos + 1)
-
-        # Giant above other size roles
-        if giant and giantess and giant.position <= giantess.position:
-            await giant.edit(position=giantess.position + 1)
-
-        # Dead below Spellcaster, above size roles
-        if dead and spellcaster and dead.position >= spellcaster.position:
-            await dead.edit(position=spellcaster.position - 1)
-
-    except discord.errors.Forbidden:
-        print("⚠️ Missing Permissions: Bot cannot move roles. Check its role order.")
-    except Exception as e:
-        print(f"⚠️ Unexpected error while reordering roles: {e}")
-
     msg = "✅ Roles created: " + ", ".join(created) if created else "ℹ️ All roles updated successfully."
     await interaction.response.send_message(msg)
 
@@ -123,7 +94,12 @@ async def remove_roles(interaction: discord.Interaction):
     await interaction.response.send_message(msg)
 
 # --- Core Size Interaction ---
-async def size_interaction(interaction, user, action_word: str, success_verb: str):
+async def size_interaction(interaction, user, action_word: str, success_verb: str, causes_death: bool = False):
+    # Prevent self targeting
+    if interaction.user.id == user.id:
+        await interaction.response.send_message("😒 You can’t target yourself, silly.", ephemeral=True)
+        return
+
     actor_rank = get_size_rank(interaction.user)
     target_rank = get_size_rank(user)
 
@@ -133,46 +109,30 @@ async def size_interaction(interaction, user, action_word: str, success_verb: st
 
     if actor_rank > target_rank:
         await interaction.response.send_message(f"💥 {interaction.user.mention} {success_verb} {user.mention}!")
-        dead_role = discord.utils.get(interaction.guild.roles, name=DEAD_ROLE)
-        await user.add_roles(dead_role)
+        if causes_death:
+            dead_role = discord.utils.get(interaction.guild.roles, name=DEAD_ROLE)
+            if dead_role:
+                await user.add_roles(dead_role)
     else:
         await interaction.response.send_message(
             f"😬 {interaction.user.mention} tried to {action_word} {user.mention}... embarrassing."
         )
 
-# --- Size Interaction Commands ---
+# --- Giant Commands ---
 @bot.tree.command(name="step", description="Step on a smaller user.")
 @app_commands.describe(user="The user to step on")
 async def step(interaction: discord.Interaction, user: discord.Member):
-    await size_interaction(interaction, user, "step on", "has stepped on")
-
-@bot.tree.command(name="kill", description="Kill a smaller user.")
-@app_commands.describe(user="The user to kill", method="Method of execution")
-async def kill(interaction: discord.Interaction, user: discord.Member, method: str):
-    actor_rank = get_size_rank(interaction.user)
-    target_rank = get_size_rank(user)
-
-    if actor_rank > target_rank:
-        await interaction.response.send_message(f"☠️ {interaction.user.mention} killed {user.mention} by {method}.")
-        dead_role = discord.utils.get(interaction.guild.roles, name=DEAD_ROLE)
-        await user.add_roles(dead_role)
-    else:
-        await interaction.response.send_message(f"😬 {interaction.user.mention} tried to kill {user.mention}... failed.")
-
-@bot.tree.command(name="crush", description="Crush a smaller user.")
-@app_commands.describe(user="The user to crush")
-async def crush(interaction: discord.Interaction, user: discord.Member):
-    await size_interaction(interaction, user, "crush", "has crushed")
+    await size_interaction(interaction, user, "step on", "has stepped on", causes_death=True)
 
 @bot.tree.command(name="squish", description="Squish a smaller user.")
 @app_commands.describe(user="The user to squish")
 async def squish(interaction: discord.Interaction, user: discord.Member):
-    await size_interaction(interaction, user, "squish", "has squished")
+    await size_interaction(interaction, user, "squish", "has squished", causes_death=True)
 
 @bot.tree.command(name="devour", description="Devour a smaller user.")
 @app_commands.describe(user="The user to devour")
 async def devour(interaction: discord.Interaction, user: discord.Member):
-    await size_interaction(interaction, user, "devour", "has devoured")
+    await size_interaction(interaction, user, "devour", "has devoured", causes_death=True)
 
 @bot.tree.command(name="pick_up", description="Pick up a smaller user.")
 @app_commands.describe(user="The user to pick up")
@@ -193,7 +153,8 @@ async def revive(interaction: discord.Interaction, user: discord.Member):
         return
 
     dead_role = discord.utils.get(interaction.guild.roles, name=DEAD_ROLE)
-    await user.remove_roles(dead_role)
+    if dead_role:
+        await user.remove_roles(dead_role)
     await interaction.response.send_message(f"💫 {user.mention} has been revived!")
 
 @bot.tree.command(name="change_size", description="Change a user's size role (Spellcaster only).")
@@ -213,8 +174,38 @@ async def change_size(interaction: discord.Interaction, user: discord.Member, si
             await user.remove_roles(role)
 
     new_role = discord.utils.get(interaction.guild.roles, name=size_role)
-    await user.add_roles(new_role)
+    if new_role:
+        await user.add_roles(new_role)
     await interaction.response.send_message(f"✨ {user.mention} is now {size_role} sized!")
+
+# --- Info Command ---
+@bot.tree.command(name="info", description="List all available commands.")
+async def info(interaction: discord.Interaction):
+    info_text = (
+        "📘 **Thank you for using Demise!**\n\n"
+        "**For Larger People**\n"
+        "🔪 **Dangerous**\n"
+        "`/step` - steps on user.\n"
+        "`/squish` - squishes the user.\n"
+        "`/devour` - devours the user.\n\n"
+        "🎯 **Fun**\n"
+        "`/poke` - pokes the user.\n"
+        "`/pick_up` - picks up the user.\n\n"
+        "**Spellcasters**\n"
+        "`/revive` - revives the user.\n"
+        "`/change_size` - changes the size of the user.\n"
+    )
+    await interaction.response.send_message(info_text, ephemeral=True)
+
+# --- Invite Command ---
+@bot.tree.command(name="invite", description="Get an invite link to add the bot.")
+async def invite(interaction: discord.Interaction):
+    app_info = await bot.application_info()
+    invite_link = f"https://discord.com/oauth2/authorize?client_id={app_info.id}&permissions=8&scope=bot%20applications.commands"
+    await interaction.response.send_message(
+        f"🔗 **Invite Demise to your server:**\n{invite_link}",
+        ephemeral=True
+    )
 
 # --- Run Bot ---
 bot.run(TOKEN)
