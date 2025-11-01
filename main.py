@@ -50,9 +50,10 @@ import cogs.commands_admin as commands_admin
 commands_user.register(bot, helpers)
 commands_admin.register(bot, helpers)
 
-# --- Load cogs (sync, etc.) ---
+# --- Load cogs (sync, welcome, etc.) ---
 async def load_extensions():
     await bot.load_extension("cogs.sync")
+    await bot.load_extension("cogs.welcome")  # ✅ New welcome cog loaded
 
 @bot.event
 async def on_ready():
