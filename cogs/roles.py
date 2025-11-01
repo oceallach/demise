@@ -13,6 +13,7 @@ class RoleDropdown(discord.ui.Select):
         max_values = 1 if select_type.lower() == "single" else len(roles)
         placeholder = "Select your roles..." if max_values > 1 else "Select one role..."
 
+        # Persist view by including all role IDs in custom_id
         super().__init__(
             placeholder=placeholder,
             min_values=1,
@@ -27,13 +28,12 @@ class RoleDropdown(discord.ui.Select):
             for value in self.values
         ]
         user = interaction.user
-        added = []
-        removed = []
+        added, removed = [], []
 
-        # If single, remove all other roles from this group first
+        # If single, remove other roles first
         if self.max_values == 1:
-            for role in self.options:
-                r = discord.utils.get(interaction.guild.roles, id=int(role.value))
+            for opt in self.options:
+                r = discord.utils.get(interaction.guild.roles, id=int(opt.value))
                 if r in user.roles and r not in selected_roles:
                     await user.remove_roles(r)
                     removed.append(r.name)
@@ -70,48 +70,41 @@ class Roles(commands.Cog):
     @app_commands.command(name="create_role_selector", description="Create a role selector embed")
     @app_commands.describe(
         type="Choose 'single' (radio) or 'multiple' (checkbox).",
-        message="The header/message displayed above the menu.",
-        roles="Mention one or more roles."
+        message="The message displayed above the dropdown.",
+        roles="Mention one or more roles separated by spaces."
     )
     async def create_role_selector(
         self,
         interaction: discord.Interaction,
         type: str,
         message: str,
-        roles: commands.Greedy[discord.Role]
+        roles: str
     ):
-        # Only the guild owner can use
         if interaction.user != interaction.guild.owner:
-            return await interaction.response.send_message(
-                "❌ Only the server owner can use this command.",
-                ephemeral=True
-            )
+            return await interaction.response.send_message("❌ Only the server owner can use this command.", ephemeral=True)
+
+        role_ids = [int(r[3:-1]) for r in roles.split() if r.startswith("<@&") and r.endswith(">")]
+        role_objs = [interaction.guild.get_role(rid) for rid in role_ids if interaction.guild.get_role(rid)]
+
+        if not role_objs:
+            return await interaction.response.send_message("❌ You must mention at least one valid role.", ephemeral=True)
 
         if type.lower() not in ["single", "multiple"]:
-            return await interaction.response.send_message(
-                "Type must be either `single` or `multiple`.",
-                ephemeral=True
-            )
+            return await interaction.response.send_message("❌ Type must be `single` or `multiple`.", ephemeral=True)
 
-        if not roles:
-            return await interaction.response.send_message(
-                "You must mention at least one role.",
-                ephemeral=True
-            )
+        embed = discord.Embed(title="Role Selector", description=message, color=discord.Color.blurple())
+        view = RoleSelector(role_objs, type)
 
-        embed = discord.Embed(
-            title="Role Selector",
-            description=message,
-            color=discord.Color.blurple()
-        )
-
-        view = RoleSelector(roles, type)
-        await interaction.channel.send(embed=embed, view=view)
+        sent_msg = await interaction.channel.send(embed=embed, view=view)
         await interaction.response.send_message("✅ Role selector created!", ephemeral=True)
+
+        # Register view persistently
+        self.bot.add_view(view, message_id=sent_msg.id)
 
     async def setup_persistent_views(self):
         if self.views_added:
             return
+
         for guild in self.bot.guilds:
             for channel in guild.text_channels:
                 try:
@@ -122,7 +115,11 @@ class Roles(commands.Cog):
                                     if isinstance(comp, discord.ui.Select) and comp.custom_id.startswith("role_dropdown_"):
                                         select_type = "single" if "single" in comp.custom_id else "multiple"
                                         role_ids = [int(v) for v in comp.custom_id.split("_")[3:]]
-                                        roles = [discord.utils.get(guild.roles, id=r) for r in role_ids if discord.utils.get(guild.roles, id=r)]
+                                        roles = [
+                                            discord.utils.get(guild.roles, id=r)
+                                            for r in role_ids
+                                            if discord.utils.get(guild.roles, id=r)
+                                        ]
                                         if roles:
                                             self.bot.add_view(RoleSelector(roles, select_type), message_id=message.id)
                     self.views_added = True
