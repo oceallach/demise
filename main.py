@@ -65,12 +65,20 @@ async def load_extensions():
         except Exception as e:
             print(f"❌ Failed to load cog: {cog}\n{traceback.format_exc()}")
 
-    await bot.tree.sync()
-    print(f"✅ Slash commands synced. ({loaded}/{len(cogs_to_load)} cogs loaded successfully)")
+    print(f"🧩 Loaded {loaded}/{len(cogs_to_load)} cogs.")
+    # ⚠️ Do NOT sync here anymore — moved to on_ready()
+
 
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
+
+    try:
+        await bot.tree.sync()
+        print("✅ Slash commands synced successfully.")
+    except Exception as e:
+        print(f"❌ Slash command sync failed:\n{traceback.format_exc()}")
+
 
 # --- Dummy hosting server (for Repl.it/Render etc.) ---
 def run_dummy_server():
