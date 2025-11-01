@@ -101,7 +101,7 @@ def register(bot: discord.Client, helpers: dict):
             await user.add_roles(new_role)
         await interaction.response.send_message(f"✨ {user.mention} is now {size_role} sized!")
 
-    # --- Info (Embed Version) ---
+    # --- Info (Embed with Columns) ---
     @bot.tree.command(name="info", description="List all available commands.")
     async def info(interaction: discord.Interaction):
         embed = discord.Embed(
@@ -110,25 +110,36 @@ def register(bot: discord.Client, helpers: dict):
             colour=discord.Colour.purple()
         )
 
+        # Column-style fields
         embed.add_field(
-            name="👑 **For Larger People**",
+            name="👑 For Larger People",
             value=(
-                "🔪 **Dangerous**\n"
+                f"🔪 **Dangerous**\n"
                 f"{ACTION_EMOJIS['step']} `/step` — Step on a user.\n"
                 f"{ACTION_EMOJIS['squish']} `/squish` — Squish a user.\n"
-                f"{ACTION_EMOJIS['devour']} `/devour` — Devour a user.\n\n"
-                "🎯 **Fun**\n"
-                f"{ACTION_EMOJIS['poke']} `/poke` — Poke a user.\n"
-                f"{ACTION_EMOJIS['pick_up']} `/pick_up` — Pick up a user.\n"
+                f"{ACTION_EMOJIS['devour']} `/devour` — Devour a user."
             ),
-            inline=False
+            inline=True
+        )
+        embed.add_field(
+            name="😋 Fun",
+            value=(
+                f"{ACTION_EMOJIS['poke']} `/poke` — Poke a user.\n"
+                f"{ACTION_EMOJIS['pick_up']} `/pick_up` — Pick up a user."
+            ),
+            inline=True
+        )
+        embed.add_field(
+            name="‎",
+            value="‎",  # spacer to balance columns
+            inline=True
         )
 
         embed.add_field(
-            name="✨ **For Spellcasters**",
+            name="✨ Spellcasters",
             value=(
                 "💫 `/revive` — Revive a dead user.\n"
-                "🔮 `/change_size` — Change a user's size role.\n"
+                "🔮 `/change_size` — Change a user's size role."
             ),
             inline=False
         )
