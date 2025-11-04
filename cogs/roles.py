@@ -1,24 +1,35 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import uuid
 
 
 class RoleDropdown(discord.ui.Select):
     def __init__(self, roles: list[discord.Role], select_type: str):
+        self.roles = roles
+        self.select_type = select_type.lower()
+
         options = [
             discord.SelectOption(label=role.name, value=str(role.id))
             for role in roles
         ]
 
-        max_values = 1 if select_type.lower() == "single" else len(roles)
-        placeholder = "🎭 Select your roles..." if max_values > 1 else "🎯 Choose one role..."
+        max_values = 1 if self.select_type == "single" else len(roles)
+        placeholder = (
+            "🎭 Select your roles..."
+            if max_values > 1
+            else "🎯 Choose one role..."
+        )
+
+        # Short unique custom_id — avoids exceeding Discord’s 100-char limit
+        unique_id = str(uuid.uuid4())[:8]
 
         super().__init__(
             placeholder=placeholder,
             min_values=1,
             max_values=max_values,
             options=options,
-            custom_id=f"role_dropdown_{select_type.lower()}_" + "_".join([str(r.id) for r in roles])
+            custom_id=f"role_dropdown_{unique_id}"
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -29,7 +40,7 @@ class RoleDropdown(discord.ui.Select):
         user = interaction.user
         added, removed = [], []
 
-        # If single, remove other roles first
+        # If single-select, remove all other dropdown roles before adding
         if self.max_values == 1:
             for opt in self.options:
                 role = discord.utils.get(interaction.guild.roles, id=int(opt.value))
@@ -52,7 +63,10 @@ class RoleDropdown(discord.ui.Select):
         if removed:
             msg.append(f"❌ Removed: {', '.join(removed)}")
 
-        await interaction.response.send_message("\n".join(msg) or "No changes made.", ephemeral=True)
+        await interaction.response.send_message(
+            "\n".join(msg) or "No changes made.",
+            ephemeral=True
+        )
 
 
 class RoleSelector(discord.ui.View):
@@ -66,7 +80,10 @@ class Roles(commands.Cog):
         self.bot = bot
         self.views_added = False
 
-    @app_commands.command(name="create_role_selector", description="Create a custom role selector embed")
+    @app_commands.command(
+        name="create_role_selector",
+        description="Create a custom role selector embed."
+    )
     @app_commands.describe(
         type="Choose 'single' (radio) or 'multiple' (checkbox).",
         header="The title of the embed (e.g. 'Choose your region!').",
@@ -81,14 +98,24 @@ class Roles(commands.Cog):
         message: str,
         roles: str
     ):
+        # Owner-only restriction
         if interaction.user != interaction.guild.owner:
             return await interaction.response.send_message(
                 "❌ Only the server owner can use this command.",
                 ephemeral=True
             )
 
-        role_ids = [int(r[3:-1]) for r in roles.split() if r.startswith("<@&") and r.endswith(">")]
-        role_objs = [interaction.guild.get_role(rid) for rid in role_ids if interaction.guild.get_role(rid)]
+        # Extract role IDs from mentions
+        role_ids = [
+            int(r[3:-1])
+            for r in roles.split()
+            if r.startswith("<@&") and r.endswith(">")
+        ]
+        role_objs = [
+            interaction.guild.get_role(rid)
+            for rid in role_ids
+            if interaction.guild.get_role(rid)
+        ]
 
         if not role_objs:
             return await interaction.response.send_message(
@@ -108,19 +135,21 @@ class Roles(commands.Cog):
                 ephemeral=True
             )
 
-        # Create the embed with user-provided header and message
+        # Embed with custom title + message
         embed = discord.Embed(
             title=header,
             description=message,
             color=discord.Color.blurple()
         )
-        embed.set_footer(text=f"Selection mode: {'Single' if type.lower() == 'single' else 'Multiple'}")
+        embed.set_footer(
+            text=f"Selection mode: {'Single' if type.lower() == 'single' else 'Multiple'}"
+        )
 
         view = RoleSelector(role_objs, type)
         sent_msg = await interaction.channel.send(embed=embed, view=view)
         await interaction.response.send_message("✅ Role selector created!", ephemeral=True)
 
-        # Register persistent view
+        # Register the view persistently
         self.bot.add_view(view, message_id=sent_msg.id)
 
     async def setup_persistent_views(self):
@@ -135,14 +164,14 @@ class Roles(commands.Cog):
                             for row in message.components:
                                 for comp in row.children:
                                     if isinstance(comp, discord.ui.Select) and comp.custom_id.startswith("role_dropdown_"):
-                                        select_type = "single" if "single" in comp.custom_id else "multiple"
-                                        role_ids = [int(v) for v in comp.custom_id.split("_")[3:]]
+                                        # Recover roles from dropdown options
                                         roles = [
-                                            discord.utils.get(guild.roles, id=r)
-                                            for r in role_ids
-                                            if discord.utils.get(guild.roles, id=r)
+                                            discord.utils.get(guild.roles, id=int(o.value))
+                                            for o in comp.options
+                                            if discord.utils.get(guild.roles, id=int(o.value))
                                         ]
                                         if roles:
+                                            select_type = "single" if comp.max_values == 1 else "multiple"
                                             self.bot.add_view(RoleSelector(roles, select_type), message_id=message.id)
                     self.views_added = True
                 except Exception:
