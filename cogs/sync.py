@@ -2,14 +2,24 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-DEV_GUILD_ID = 1152640567445037140  # Replace with your testing guild ID
-
+DEV_GUILD_ID = 1152640567445037140
 
 class Sync(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.synced = False  # prevent double-syncing
 
-    # ✅ Slash command definition (must be *inside* the class)
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if not self.synced:
+            await self.bot.wait_until_ready()
+            try:
+                synced = await self.bot.tree.sync(guild=discord.Object(id=DEV_GUILD_ID))
+                print(f"✅ Auto-synced {len(synced)} slash commands with guild {DEV_GUILD_ID}")
+                self.synced = True
+            except Exception as e:
+                print(f"❌ Auto-sync failed: {e}")
+
     @app_commands.command(
         name="sync",
         description="Sync slash commands with Discord (Owner-only, Dev Guild only)."
@@ -26,12 +36,4 @@ class Sync(commands.Cog):
 
 
 async def setup(bot):
-    # ✅ Add the cog
     await bot.add_cog(Sync(bot))
-
-    # 💡 Auto-sync trick: sync your commands automatically on startup/deploy
-    try:
-        synced = await bot.tree.sync(guild=discord.Object(id=DEV_GUILD_ID))
-        print(f"✅ Auto-synced {len(synced)} slash commands with guild {DEV_GUILD_ID}")
-    except Exception as e:
-        print(f"❌ Auto-sync failed: {e}")
